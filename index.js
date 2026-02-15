@@ -198,3 +198,48 @@ async function run() {
         
                 res.send(result);
             });
+
+    app.get("/contests", async (req, res) => {
+        const { type, search, sort, limit } = req.query;
+
+        const query = { status: "confirmed" };
+
+        if (search && String(search).trim()) {
+            query.contestType = { $regex: String(search).trim(), $options: "i" };
+        } else if (type && String(type).trim() && String(type).trim() !== "All") {
+            query.contestType = String(type).trim();
+        }
+
+        const lim = Math.min(parseInt(limit || "0", 10) || 0, 50);
+
+        const sortDoc =
+            String(sort).toLowerCase() === "popular"
+                ? { participantsCount: -1, updatedAt: -1 }
+                : { createdAt: -1 };
+
+        let cursor = contestsCollection.find(query).sort(sortDoc);
+        if (lim) cursor = cursor.limit(lim);
+
+        const data = await cursor.toArray();
+        res.send(data);
+    });
+
+    app.get("/contests/popular", async (req, res) => {
+        const lim = Math.min(parseInt(req.query.limit || "5", 10) || 5, 20);
+        const data = await contestsCollection
+            .find({ status: "confirmed" })
+            .sort({ participantsCount: -1, updatedAt: -1 })
+            .limit(lim)
+            .toArray();
+        res.send(data);
+    });
+
+    app.get("/contests/recent-winners", async (req, res) => {
+        const lim = Math.min(parseInt(req.query.limit || "6", 10) || 6, 20);
+        const data = await contestsCollection
+            .find({ status: "confirmed", "winner.email": { $exists: true, $ne: "" } })
+            .sort({ winnerDeclaredAt: -1 })
+            .limit(lim)
+            .toArray();
+        res.send(data);
+    });
