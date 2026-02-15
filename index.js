@@ -130,3 +130,71 @@ async function run() {
                 const token = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: "7d" });
                 res.send({ token });
             });
+
+        app.post("/users", async (req, res) => {
+                const email = normalizeEmail(req.body?.email);
+                if (!email) return res.status(400).send({ message: "Email is required" });
+        
+                const name = req.body?.name ? String(req.body.name).trim() : "";
+                const photoURL = req.body?.photoURL ? String(req.body.photoURL).trim() : "";
+        
+                const result = await usersCollection.updateOne(
+                    { email },
+                    {
+                        $set: { name, photoURL, updatedAt: new Date() },
+                        $setOnInsert: { email, role: "user", winsCount: 0, createdAt: new Date() },
+                    },
+                    { upsert: true }
+                );
+        
+                res.send(result);
+            });
+        
+            app.get("/users/me", verifyJWT, async (req, res) => {
+                const me = await usersCollection.findOne({ email: req.user.email });
+                res.send(me);
+            });
+        
+            app.patch("/users/me", verifyJWT, async (req, res) => {
+                const email = req.user.email;
+                const { name, photoURL, bio, address } = req.body || {};
+        
+                const update = {};
+                if (name !== undefined) update.name = String(name).trim();
+                if (photoURL !== undefined) update.photoURL = String(photoURL).trim();
+                if (bio !== undefined) update.bio = String(bio).trim();
+                if (address !== undefined) update.address = String(address).trim();
+        
+                if (Object.keys(update).length === 0) {
+                    return res.status(400).send({ message: "No fields to update" });
+                }
+        
+                const result = await usersCollection.updateOne(
+                    { email },
+                    { $set: { ...update, updatedAt: new Date() } }
+                );
+        
+                res.send(result);
+            });
+        
+            app.get("/users", verifyJWT, verifyAdmin, async (req, res) => {
+                const users = await usersCollection.find().sort({ createdAt: -1 }).toArray();
+                res.send(users);
+            });
+        
+            app.patch("/users/:id/role", verifyJWT, verifyAdmin, async (req, res) => {
+                const { id } = req.params;
+                const role = String(req.body?.role || "").trim();
+        
+                if (!isValidObjectId(id)) return res.status(400).send({ message: "Invalid user ID" });
+                if (!["user", "creator", "admin"].includes(role)) {
+                    return res.status(400).send({ message: "Invalid role" });
+                }
+        
+                const result = await usersCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    { $set: { role, updatedAt: new Date() } }
+                );
+        
+                res.send(result);
+            });
