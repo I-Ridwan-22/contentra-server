@@ -1,0 +1,30 @@
+{
+  "name": "contentra-server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/I-Ridwan-22/contentra-server.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/I-Ridwan-22/contentra-server/issues"
+  },
+  "homepage": "https://github.com/I-Ridwan-22/contentra-server#readme",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.2.4",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "mongodb": "^7.1.0",
+    "stripe": "^20.3.1"
+  }
+}
