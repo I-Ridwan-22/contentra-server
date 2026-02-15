@@ -44,3 +44,12 @@ const verifyJWT = (req, res, next) => {
         next();
     });
 };
+
+async function run() {
+    await client.connect();
+
+    const db = client.db("conteraDB");
+    const usersCollection = db.collection("users");
+    const contestsCollection = db.collection("contests");
+    const registrationsCollection = db.collection("registrations");
+    const submissionsCollection = db.collection("submissions");
