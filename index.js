@@ -108,3 +108,25 @@ async function run() {
     
             return { ok: true, contest, role };
         };
+
+        app.post("/jwt", async (req, res) => {
+                const email = normalizeEmail(req.body?.email);
+                if (!email) return res.status(400).send({ message: "Email required" });
+        
+                await usersCollection.updateOne(
+                    { email },
+                    {
+                        $setOnInsert: {
+                            email,
+                            role: "user",
+                            winsCount: 0,
+                            createdAt: new Date(),
+                        },
+                        $set: { updatedAt: new Date() },
+                    },
+                    { upsert: true }
+                );
+        
+                const token = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: "7d" });
+                res.send({ token });
+            });
