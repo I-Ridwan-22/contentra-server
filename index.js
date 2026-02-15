@@ -28,3 +28,19 @@ const client = new MongoClient(uri, {
         deprecationErrors: true,
     },
 });
+
+const isValidObjectId = (id) => ObjectId.isValid(id);
+
+const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
+
+const verifyJWT = (req, res, next) => {
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : null;
+    if (!token) return res.status(401).send({ message: "Unauthorized" });
+
+    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+        if (err || !decoded?.email) return res.status(401).send({ message: "Unauthorized" });
+        req.user = { email: normalizeEmail(decoded.email) };
+        next();
+    });
+};
