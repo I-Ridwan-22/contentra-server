@@ -46,7 +46,7 @@ const verifyJWT = (req, res, next) => {
 };
 
 async function run() {
-    await client.connect();
+    // await client.connect();
 
     const db = client.db("conteraDB");
     const usersCollection = db.collection("users");
@@ -752,7 +752,7 @@ run().catch((err) => {
 
 process.on("SIGINT", async () => {
     try {
-        await client.close();
+        // await client.close();
         process.exit(0);
     } catch {
         process.exit(1);
