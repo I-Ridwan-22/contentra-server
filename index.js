@@ -243,3 +243,182 @@ async function run() {
             .toArray();
         res.send(data);
     });
+
+    app.get("/site-stats", async (req, res) => {
+            const totalContests = await contestsCollection.countDocuments({ status: "confirmed" });
+            const totalWinners = await contestsCollection.countDocuments({
+                status: "confirmed",
+                "winner.email": { $exists: true, $ne: "" },
+            });
+    
+            const participantsAgg = await contestsCollection
+                .aggregate([
+                    { $match: { status: "confirmed" } },
+                    { $group: { _id: null, totalParticipants: { $sum: { $ifNull: ["$participantsCount", 0] } } } },
+                ])
+                .toArray();
+    
+            const prizeAgg = await contestsCollection
+                .aggregate([
+                    { $match: { status: "confirmed", "winner.email": { $exists: true, $ne: "" } } },
+                    { $group: { _id: null, totalPrizeMoney: { $sum: { $ifNull: ["$prizeMoney", 0] } } } },
+                ])
+                .toArray();
+    
+            res.send({
+                totalContests,
+                totalWinners,
+                totalParticipants: participantsAgg?.[0]?.totalParticipants || 0,
+                totalPrizeMoney: prizeAgg?.[0]?.totalPrizeMoney || 0,
+            });
+        });
+    
+        app.get("/contests/:id", async (req, res) => {
+            const { id } = req.params;
+            if (!isValidObjectId(id)) return res.status(400).send({ message: "Invalid contest ID" });
+    
+            const contest = await contestsCollection.findOne({
+                _id: new ObjectId(id),
+                status: "confirmed",
+            });
+    
+            if (!contest) return res.status(404).send({ message: "Contest not found" });
+            res.send(contest);
+        });
+    
+        app.post("/contests", verifyJWT, verifyCreator, async (req, res) => {
+            const c = req.body || {};
+    
+            const required = ["name", "image", "description", "price", "prizeMoney", "taskInstruction", "contestType", "deadline"];
+            for (const k of required) {
+                if (c[k] === undefined || c[k] === null || String(c[k]).trim() === "") {
+                    return res.status(400).send({ message: `Missing field: ${k}` });
+                }
+            }
+    
+            const doc = {
+                name: String(c.name).trim(),
+                image: String(c.image).trim(),
+                description: String(c.description).trim(),
+                taskInstruction: String(c.taskInstruction).trim(),
+                contestType: String(c.contestType).trim(),
+                deadline: String(c.deadline).trim(),
+                price: Number(c.price),
+                prizeMoney: Number(c.prizeMoney),
+                status: "pending",
+                participantsCount: 0,
+                winner: null,
+                createdBy: req.user.email,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            };
+    
+            const result = await contestsCollection.insertOne(doc);
+            res.send(result);
+        });
+    
+        app.get("/creator/contests", verifyJWT, verifyCreator, async (req, res) => {
+            const email = req.user.email;
+            const data = await contestsCollection
+                .find({ createdBy: email })
+                .sort({ createdAt: -1 })
+                .toArray();
+            res.send(data);
+        });
+    
+        app.patch("/contests/:id", verifyJWT, verifyCreator, async (req, res) => {
+            const { id } = req.params;
+            if (!isValidObjectId(id)) return res.status(400).send({ message: "Invalid contest ID" });
+    
+            const contest = await contestsCollection.findOne({ _id: new ObjectId(id) });
+            if (!contest) return res.status(404).send({ message: "Contest not found" });
+    
+            if (normalizeEmail(contest.createdBy) !== req.user.email) {
+                return res.status(403).send({ message: "Forbidden" });
+            }
+    
+            if (contest.status !== "pending") {
+                return res.status(403).send({ message: "Only pending contests can be edited" });
+            }
+    
+            const up = req.body || {};
+            const allowed = ["name", "image", "description", "price", "prizeMoney", "taskInstruction", "contestType", "deadline"];
+    
+            const updateFields = {};
+            for (const k of allowed) {
+                if (up[k] !== undefined) updateFields[k] = up[k];
+            }
+    
+            if (Object.keys(updateFields).length === 0) {
+                return res.status(400).send({ message: "No fields to update" });
+            }
+    
+            updateFields.updatedAt = new Date();
+    
+            const result = await contestsCollection.updateOne(
+                { _id: new ObjectId(id) },
+                { $set: updateFields }
+            );
+    
+            res.send(result);
+        });
+    
+        app.delete("/contests/:id", verifyJWT, verifyCreator, async (req, res) => {
+            const { id } = req.params;
+            if (!isValidObjectId(id)) return res.status(400).send({ message: "Invalid contest ID" });
+    
+            const contest = await contestsCollection.findOne({ _id: new ObjectId(id) });
+            if (!contest) return res.status(404).send({ message: "Contest not found" });
+    
+            if (normalizeEmail(contest.createdBy) !== req.user.email) {
+                return res.status(403).send({ message: "Forbidden" });
+            }
+    
+            if (contest.status !== "pending") {
+                return res.status(403).send({ message: "Only pending contests can be deleted" });
+            }
+    
+            const result = await contestsCollection.deleteOne({ _id: new ObjectId(id) });
+            res.send(result);
+        });
+    
+        app.get("/admin/contests", verifyJWT, verifyAdmin, async (req, res) => {
+            const page = Math.max(parseInt(req.query.page || "1", 10) || 1, 1);
+            const limit = Math.min(parseInt(req.query.limit || "10", 10) || 10, 50);
+            const skip = (page - 1) * limit;
+    
+            const total = await contestsCollection.countDocuments();
+            const data = await contestsCollection
+                .find()
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .toArray();
+    
+            res.send({ total, page, limit, data });
+        });
+    
+        app.patch("/admin/contests/:id/status", verifyJWT, verifyAdmin, async (req, res) => {
+            const { id } = req.params;
+            const status = String(req.body?.status || "").trim();
+    
+            if (!isValidObjectId(id)) return res.status(400).send({ message: "Invalid contest ID" });
+            if (!["confirmed", "rejected"].includes(status)) {
+                return res.status(400).send({ message: "Status must be confirmed or rejected" });
+            }
+    
+            const result = await contestsCollection.updateOne(
+                { _id: new ObjectId(id) },
+                { $set: { status, updatedAt: new Date() } }
+            );
+    
+            res.send(result);
+        });
+    
+        app.delete("/admin/contests/:id", verifyJWT, verifyAdmin, async (req, res) => {
+            const { id } = req.params;
+            if (!isValidObjectId(id)) return res.status(400).send({ message: "Invalid contest ID" });
+    
+            const result = await contestsCollection.deleteOne({ _id: new ObjectId(id) });
+            res.send(result);
+        });
